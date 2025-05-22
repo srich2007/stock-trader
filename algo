@@ -1,0 +1,53 @@
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+pd.options.display.float_format = '{:,.2f}'.format
+
+
+ticker = input('Enter ticker symbol: ').upper()
+
+def get_data(ticker):
+    df = yf.download(ticker, period='1y', interval='1d')
+    return df
+pd.set_option('display.max_columns', None)
+
+stock_df = get_data(ticker)
+stock_df['Balance'] = int(input('Enter balance: '))
+stock_df["Daily Return"] = stock_df["Close"].pct_change() * 100
+stock_df["20 MA"] = stock_df["Close"].rolling(20).mean()
+stock_df["50 MA"] = stock_df["Close"].rolling(50).mean()
+stock_df['Signal'] = stock_df["20 MA"] > stock_df["50 MA"]
+stock_df['Signal'] = stock_df['Signal'].map({True: 'Buy', False: 'Sell'})
+stock_df['Position'] = stock_df['Signal'].map({'Buy': 1, 'Sell': -1})
+stock_df['Position'] = stock_df['Position'].shift(1)
+stock_df['Strategy Return'] = stock_df['Daily Return'] * stock_df['Position']
+stock_df['Cumulative Return'] = (1 + stock_df['Strategy Return'] / 100).cumprod()
+stock_df['Balance'] = stock_df['Balance'] * stock_df['Cumulative Return']
+daily_returns = stock_df['Strategy Return'] / 100
+sharpe = daily_returns.mean() / daily_returns.std()
+sharpe *= np.sqrt(252)
+cumulative = stock_df['Cumulative Return']
+max_profit = cumulative.cummax()
+drawdown = cumulative / max_profit - 1
+max_drawdown = drawdown.min()
+print(f"Max Drawdown : {max_drawdown:.2%}")
+print(f"Sharpe Ratio: {sharpe:.2f}")
+start = stock_df['Balance'].iloc[0]
+end = stock_df['Balance'].iloc[-1]
+total_return = (end - start) / start
+print(f"Total Return: {total_return:.2%}")
+stock_df['BuyHold Return'] = (1 + stock_df['Daily Return'] / 100).cumprod()
+print(stock_df[["Open", "Close", "Position", "Signal", "Daily Return", "Strategy Return", "Cumulative Return", 'Balance']].tail())
+plt.figure(figsize=(12,5))
+plt.plot(stock_df['Cumulative Return'], label='Strategy Return', color='green')
+plt.plot(stock_df['BuyHold Return'], label='Buy & Hold Return', color='blue', linestyle='--')
+plt.title(f"{ticker}: Strategy vs Buy-and-Hold Performance")
+plt.xlabel("Date")
+plt.ylabel("Return (Growth Multiplier)")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
